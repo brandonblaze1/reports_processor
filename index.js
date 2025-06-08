@@ -4,10 +4,10 @@
 require('dotenv').config();
 const { runUpdateBlaze }  = require('./updateBlaze');
 const { runUpdateLegacy } = require('./updateLegacy');
-const fs        = require('fs');
-const path      = require('path');
-const cron      = require('node-cron');
-const minimist  = require('minimist');
+const fs                  = require('fs');
+const path                = require('path');
+const cron                = require('node-cron');
+const minimist            = require('minimist');
 const { fetchAttachments } = require('./gmail');
 const { log, initLogger }   = require('./utils/logger');
 
@@ -35,8 +35,9 @@ async function processFile(filePath) {
       await require('./workflows/mtd_receivables').run(filePath);
     } else if (name.includes('receivables')) {
       await require('./workflows/receivables_daily').run(filePath);
-    } else if (name.includes('unit') || name.includes('rent_roll')) {
-      await require('./workflows/unit_counts').run(filePath);
+    } else if (name.includes('rent_roll') || name.includes('unit')) {
+      // point both rent_roll-*.csv and any "unit" files at your consolidated workflow
+      await require('./workflows/rent_roll').run(filePath);
     } else {
       log(`⚠️ No matching workflow for file: ${name}`);
     }
@@ -55,7 +56,7 @@ async function runProcessor() {
       return;
     }
 
-    // 🔑 FIX: attachments is an array of file‐path strings
+    // attachments is now an array of string filePaths
     for (const filePath of attachments) {
       await processFile(filePath);
     }
