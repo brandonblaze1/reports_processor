@@ -1,0 +1,23 @@
+{
+  "name": "reports_processor",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@google-cloud/local-auth": "^3.0.1",
+    "csv-parse": "^5.6.0",
+    "dotenv": "^16.5.0",
+    "googleapis": "^148.0.0",
+    "luxon": "^3.4.3",
+    "minimist": "^1.2.8",
+    "mysql2": "^3.14.1",
+    "node-cron": "^3.0.3"
+  }
+}
