@@ -1,61 +1,75 @@
+// mysql.js  – minimalist & bullet-proof
 require('dotenv').config();
 const mysql = require('mysql2/promise');
 const { log } = require('./utils/logger');
 
+// --------------------------------------------------
+// 1. Connection pool
+// --------------------------------------------------
 const pool = mysql.createPool({
-  host: process.env.MYSQL_HOST,
-  port: process.env.MYSQL_PORT,
-  user: process.env.MYSQL_USER,
-  password: process.env.MYSQL_PASSWORD,
-  database: process.env.MYSQL_DATABASE,
+  host:               process.env.MYSQL_HOST,
+  port:               process.env.MYSQL_PORT,
+  user:               process.env.MYSQL_USER,
+  password:           process.env.MYSQL_PASSWORD,
+  database:           process.env.MYSQL_DATABASE,
+  waitForConnections: true,
+  connectionLimit:    8,
+  queueLimit:         0
 });
 
-async function upsert(table, data, uniqueKeys) {
-  const connection = await pool.getConnection();
+// --------------------------------------------------
+// 2. Generic UPSERT helper
+// --------------------------------------------------
+async function upsert(table, data) {
+  if (!data || typeof data !== 'object' || !Object.keys(data).length) {
+    throw new Error('upsert() requires a non-empty data object');
+  }
+
+  const cols         = Object.keys(data);
+  const colList      = cols.map(c => `\`${c}\``).join(', ');
+  const placeholders = cols.map(() => '?').join(', ');
+  const updates      = cols
+    .filter(c => !/(_id$|^id$)/i.test(c))           // don’t touch primary keys
+    .map(c => `\`${c}\` = VALUES(\`${c}\`)`)
+    .join(', ');
+
+  const sql = `
+    INSERT INTO \`${table}\` (${colList})
+    VALUES (${placeholders})
+    ON DUPLICATE KEY UPDATE ${updates};
+  `;
+
+  const values = cols.map(c => data[c]);
+
+  const conn = await pool.getConnection();
   try {
-    // Ensure all uniqueKeys exist in data
-    for (const key of uniqueKeys) {
-      if (!(key in data)) {
-        throw new Error(`Missing unique key '${key}' in data`);
-      }
-    }
-
-    const keys = Object.keys(data);
-    const columns = keys.map(k => `\`${k}\``).join(', ');
-    const placeholders = keys.map(() => '?').join(', ');
-    const updates = keys
-      .filter(k => !uniqueKeys.includes(k))
-      .map(k => `\`${k}\` = VALUES(\`${k}\`)`)
-      .join(', ');
-
-    const sql = `
-      INSERT INTO \`${table}\` (${columns})
-      VALUES (${placeholders})
-      ON DUPLICATE KEY UPDATE ${updates};
-    `;
-
-    const values = keys.map(k => data[k]);
-
-    await connection.execute(sql, values);
-
-    const id = data.property_id || data.unit || '[unknown ID]';
-    log(`? Upserted ${table} for ${id}`);
+    const [result] = await conn.execute(sql, values);
+    log(`? ${table}  affectedRows=${result.affectedRows}`);   // 1 = insert, 2 = update
+    return result;
   } catch (err) {
-    log(`? MySQL Upsert Error: ${err.message}`);
+    log('? MySQL error:', err.sqlMessage || err.message);
     throw err;
   } finally {
-    connection.release();
+    conn.release();
   }
 }
 
-async function upsertDailyData(data) {
-  if (!Array.isArray(data)) data = [data];
-  for (const row of data) {
-    await upsert('daily_data', row, ['property_id', 'report_date']);
-  }
+// --------------------------------------------------
+// 3. Table-specific convenience wrappers
+// --------------------------------------------------
+async function upsertDailyData(rows) {
+  if (!Array.isArray(rows)) rows = [rows];
+  for (const row of rows) await upsert('daily_data', row);
+}
+
+async function upsertMtdData(rows) {
+  if (!Array.isArray(rows)) rows = [rows];
+  for (const row of rows) await upsert('mtd_receivables', row);
 }
 
 module.exports = {
+  pool,
   upsert,
-  upsertDailyData
+  upsertDailyData,
+  upsertMtdData
 };
